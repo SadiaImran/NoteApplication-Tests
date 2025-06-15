@@ -2,39 +2,43 @@ pipeline {
     agent any
 
     environment {
-        REPO_URL = "https://github.com/SadiaImran/NoteApplication.git"
-        PROJECT_DIR = "/var/lib/jenkins/NoteApplication"
-        TEST_DIR = "NoteAppTests"
+        MAIN_REPO = "https://github.com/SadiaImran/NoteApplication.git"
+        TEST_REPO = "https://github.com/SadiaImran/NoteApplication-Tests.git"
+        MAIN_DIR  = "/var/lib/jenkins/NoteApplication"
+        TEST_DIR  = "/var/lib/jenkins/NoteApplication-Tests"
     }
 
     stages {
         stage('Clean workspace') {
             steps {
                 sh '''
-                echo "🧹 Cleaning old workspace at $PROJECT_DIR ..."
-                rm -rf $PROJECT_DIR
-                mkdir -p $PROJECT_DIR
+                echo "🧹 Cleaning workspace..."
+                rm -rf $MAIN_DIR $TEST_DIR
+                mkdir -p $MAIN_DIR $TEST_DIR
                 '''
             }
         }
 
-        stage('Clone Repository') {
+        stage('Clone Application and Tests') {
             steps {
                 sh '''
-                echo "📥 Cloning GitHub repository..."
-                git clone $REPO_URL $PROJECT_DIR
+                echo "📥 Cloning main app..."
+                git clone $MAIN_REPO $MAIN_DIR
+
+                echo "📥 Cloning test suite..."
+                git clone $TEST_REPO $TEST_DIR
                 '''
             }
         }
 
-        stage('Build and Run Tests') {
+        stage('Build & Run Selenium Tests') {
             steps {
-                dir("${PROJECT_DIR}/${TEST_DIR}") {
+                dir("$TEST_DIR") {
                     sh '''
                     echo "🐳 Building Docker image for tests..."
                     docker build -t noteapp-tests .
-                    
-                    echo "🧪 Running test container..."
+
+                    echo "🧪 Running tests..."
                     docker run --rm noteapp-tests > test_output.txt || true
                     '''
                 }
@@ -46,27 +50,26 @@ pipeline {
         always {
             script {
                 def authorEmail = sh(
-                    script: "cd $PROJECT_DIR && git log -1 --pretty=format:'%ae'",
+                    script: "cd $MAIN_DIR && git log -1 --pretty=format:'%ae'",
                     returnStdout: true
                 ).trim()
 
                 emailext (
                     to: authorEmail,
-                    subject: "📣 Jenkins Test Results - ${currentBuild.currentResult}",
+                    subject: "✅ Jenkins Test Results - ${currentBuild.currentResult}",
                     body: """
 Hi ${authorEmail},
 
-Your recent GitHub push triggered a Jenkins CI pipeline.
+Your GitHub push triggered an automated test run via Jenkins.
 
-🔧 *Build Status:* ${currentBuild.currentResult}  
-🔍 *Job:* ${env.JOB_NAME}  
-🔁 *Build Number:* #${env.BUILD_NUMBER}  
-📜 *Console Output:* ${env.BUILD_URL}
+🔧 *Status:* ${currentBuild.currentResult}  
+🔁 *Build #:* ${env.BUILD_NUMBER}  
+📜 *Details:* ${env.BUILD_URL}
 
-Thanks,  
-🤖 Jenkins Automation System
+Regards,  
+🤖 Jenkins Bot
 """,
-                    attachmentsPattern: "${PROJECT_DIR}/${TEST_DIR}/test_output.txt"
+                    attachmentsPattern: "${TEST_DIR}/test_output.txt"
                 )
             }
         }
